@@ -1,49 +1,62 @@
 import sys
 import pandas as pd
+from sqlalchemy import create_engine
 
 
 def load_data(messages_filepath, categories_filepath):
 
-    # Load csv data into table "raw_data".
+    # Load the raw csv data into one table.
     messages = pd.read_csv(messages_filepath)
     categories = pd.read_csv(categories_filepath)
-    raw_data = messages.merge(categories, on='id')
+    raw_data_table = messages.merge(categories, on='id')
 
-    return raw_data
-
-
-def clean_data(raw_data):
-
-    # Make table "raw_categories" from raw_data column "categories".
-    raw_categories = raw_data.categories.str.split(';', expand=True)
-
-    # Make list "category_headers".
-    raw_category_headers = raw_categories.iloc[0]  # use only one row (all rows contain same category list)
-    category_headers = raw_category_headers.apply(lambda x: x[:-2]) # remove dash number suffixes
-
-    # Add "category_headers" as header row to "raw_categories".
-    raw_categories.columns = category_headers
-
-    # Make table "clean_categories" by removing all but the integer suffixes from the data in "raw_categories".
-    for column in raw_categories:
-        raw_categories[column] = raw_categories[column].str[-1]
-        raw_categories[column] = raw_categories[column].astype(int)
-    clean_categories = raw_categories
-
-    # Remove column "categories" from "raw_data".
-    raw_data.drop(columns=['categories'], inplace=True)
-
-    # Make table "clean_data" by column-wise-appending "clean_categories" to "raw_data".
-    clean_data = raw_data.join(clean_categories)
-
-    # Remove duplicate rows from "clean_data".
-    clean_data.drop_duplicates(inplace=True)
-
-    return clean_data
+    return raw_data_table
 
 
-def save_data(df, database_filename):
-    pass
+def clean_data(raw_data_table):
+
+    cleaned_category_table = clean_categories(raw_data_table)
+
+    # Remove the "categories" column from the raw data table.
+    raw_data_table.drop(columns=['categories'], inplace=True)
+
+    # Make a cleaned data table by column-wise-appending the cleaned category table to the raw data table.
+    cleaned_data_table = raw_data_table.join(cleaned_category_table)
+
+    # Remove duplicate rows from the cleaned data table.
+    cleaned_data_table.drop_duplicates(inplace=True)
+
+    return cleaned_data_table
+
+
+def clean_categories(raw_data_table):
+
+    # Make a raw category table from the "categories" column in the raw data table.
+    raw_category_table = raw_data_table.categories.str.split(';', expand=True)
+
+    # Make a cleaned category list.
+    raw_category_list = raw_category_table.iloc[0]  # use only one row (all rows contain same category list)
+    cleaned_category_list = raw_category_list.apply(lambda x: x[:-2]) # remove dash number suffix from eacn category
+
+    # Add the cleaned category list as the header row to the raw category table.
+    raw_category_table.columns = cleaned_category_list
+
+    # Make a cleaned category table by removing all but the integer suffixes from the data in the raw category table.
+    for column in raw_category_table:
+        raw_category_table[column] = raw_category_table[column].str[-1]
+        raw_category_table[column] = raw_category_table[column].astype(int)
+    cleaned_category_table = raw_category_table
+
+    return cleaned_category_table
+
+
+def save_data(data_table, database_filename):
+
+    # Make database engine.
+    engine = create_engine('sqlite:///' + database_filename)
+
+    # Make database file.
+    data_table.to_sql('messages', engine, if_exists='replace', index=False)
 
 
 def main():
